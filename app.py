@@ -1,25 +1,34 @@
 import streamlit as st
-import numpy as np  
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.calibration import LabelEncoder
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.feature_selection import RFE, chi2
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 from sklearn.feature_selection import SelectKBest, chi2, RFE
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 
+st.set_page_config(page_title="Feature Selection App", layout="wide")
 
+st.title("Feature Selection Analysis App")
+st.markdown("This application applies the methods from the **Feature Selection Methods** lecture notes on the Bank Marketing dataset.")
 
+st.sidebar.header("User Input")
+name = st.sidebar.text_input("Enter your name", "Student")
+st.sidebar.write(f"Hello, **{name}**!")
 
+st.sidebar.divider()
 
+st.sidebar.subheader("Method Selection")
+method = st.sidebar.radio(
+    "Select a feature selection method:",
+    ("Chi-Square (Filter)", "RFE (Wrapper)", "Random Forest (Embedded)")
+)
 
-st.title("MY Streamlit App")
-
+st.sidebar.subheader("Visualization")
+chart_type = st.sidebar.selectbox(
+    "Chart to Display:",
+    ("Method Scores", "Correlation Matrix", "Target Variable Distribution", "Boxplot", "Pie Chart")
+)
 
 df = pd.read_csv('bank-full.csv', sep=';')
 
@@ -28,110 +37,141 @@ for col in df.columns:
     if df[col].dtype == 'object':
         df[col] = le.fit_transform(df[col])
 
-
-name = st.text_input("Enter your name")
-st.write(f"Hello, {name}! Welcome to the app.") 
-
-st.success('This is a streamlit application for feature selection methods')
-#st.text("This is a streamlit application for feature selection methods.")
-
 X = df.drop("y", axis=1)
 y = df["y"]
 
 scaler = MinMaxScaler()
 X_scaled_array = scaler.fit_transform(X)
+X_scaled_df = pd.DataFrame(X_scaled_array, columns=X.columns)
 
-X = pd.DataFrame(X_scaled_array, columns=X.columns)
-
-#st.subheader("rows of the dataset:")
-st.dataframe(df.head())
-
-#value = st.slider("Select your age:", 0, 100)
-#st.write(f"You selected: {value} years old.")
-
-
-#option = st.selectbox("Choose a model", ["k-NN", "SVM", "Decision Tree"])
-#features = st.multiselect("Select features", df.columns, format_func=str.title)
-#st.write(f"You selected: {', '.join(features)}")
-
-#st.sidebar.title("Settings")
-#option = st.sidebar.selectbox("Choose an option:", ["A", "B", "C"])
-
-#OPTION
-method = st.selectbox(
-    "Choose Feature Selection Method:",
-    ("Chi-Square (Filter)", "RFE (Wrapper)", "Random Forest (Embedded)")
-)
+if st.checkbox("Show Dataset"):
+    st.dataframe(df.head())
 
 st.divider()
 
-
-
-#CHI-SQUARE
 if method == "Chi-Square (Filter)":
-    st.subheader("Chi-Square")    
+    st.header("Chi-Square (Filter Method)")
+    st.info("This method looks at the statistical relationship between features and the target variable.")
     
-    selector = SelectKBest(chi2, k=5)
-    selector.fit(X_scaled_array, y)
+    k_value = 5
+    selector = SelectKBest(chi2, k=k_value)
+    selector.fit(X_scaled_df, y)
+    
     selected_cols = X.columns[selector.get_support()]
-    st.success(f"Choosen features: {list(selected_cols)}")
     
-    scores_df = pd.DataFrame({'Skore': selector.scores_}, index=X.columns)
-    st.bar_chart(scores_df.sort_values('Skore', ascending=False))
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.success(f"Top {k_value} features:")
+        st.write(list(selected_cols))
+        
+    with col2:
+        if chart_type == "Method Scores":
+            st.subheader("Feature Scores")
+            scores_df = pd.DataFrame({'Score': selector.scores_}, index=X.columns)
+            st.bar_chart(scores_df.sort_values('Score', ascending=False))
+        elif chart_type == "Correlation Matrix":
+            st.subheader("Correlation Matrix")
+            fig, ax = plt.subplots(figsize=(10, 8))
+            sns.heatmap(X_scaled_df.corr(), annot=False, cmap='coolwarm', ax=ax)
+            st.pyplot(fig)
+        elif chart_type == "Target Variable Distribution":
+            st.subheader("Target Variable Distribution")
+            st.bar_chart(y.value_counts())
+        elif chart_type == "Boxplot":
+            st.subheader(f"Boxplot: {selected_cols[0]}")
+            fig, ax = plt.subplots(figsize=(8, 6))
+            sns.boxplot(x=y, y=X[selected_cols[0]], ax=ax, palette="Set2")
+            st.pyplot(fig)
+        elif chart_type == "Pie Chart":
+            st.subheader("Target Variable Distribution (Pie)")
+            fig, ax = plt.subplots()
+            y.value_counts().plot.pie(autopct='%1.1f%%', startangle=90, ax=ax, cmap='Pastel1')
+            ax.set_ylabel('')
+            st.pyplot(fig)
 
-#RFE
 elif method == "RFE (Wrapper)":
-    st.subheader("RFE")
+    st.header("Recursive Feature Elimination (Wrapper Method)")
+    st.info("This method trains a model and recursively eliminates the weakest features.")
     
-
-
-
-
-
-    with st.spinner('Model training...'):
+    with st.spinner('Training model, please wait...'):
         model_lr = LogisticRegression(max_iter=1000)
         rfe = RFE(model_lr, n_features_to_select=5)
-        rfe.fit(X_scaled_array, y)
+        rfe.fit(X_scaled_df, y)
+    
     selected_cols = X.columns[rfe.get_support()]
-    st.success(f"choosen features: {list(selected_cols)}")
     
-    #GRAPH
-    ranking_df = pd.DataFrame({'Rank': rfe.ranking_}, index=X.columns)
+    col1, col2 = st.columns(2)
     
-    
-    #SORT
-    st.bar_chart(ranking_df.sort_values('Rank'))
-#RANDOM FOREST
+    with col1:
+        st.success("Selected Features:")
+        st.write(list(selected_cols))
+        
+    with col2:
+        if chart_type == "Method Scores":
+            st.subheader("Feature Ranking (Lower = Better)")
+            ranking_df = pd.DataFrame({'Rank': rfe.ranking_}, index=X.columns)
+            st.bar_chart(ranking_df.sort_values('Rank').head(10))
+        elif chart_type == "Correlation Matrix":
+            st.subheader("Correlation Matrix")
+            fig, ax = plt.subplots(figsize=(10, 8))
+            sns.heatmap(X_scaled_df.corr(), annot=False, cmap='coolwarm', ax=ax)
+            st.pyplot(fig)
+        elif chart_type == "Target Variable Distribution":
+            st.subheader("Target Variable Distribution")
+            st.bar_chart(y.value_counts())
+        elif chart_type == "Boxplot":
+            st.subheader(f"Boxplot: {selected_cols[0]}")
+            fig, ax = plt.subplots(figsize=(8, 6))
+            sns.boxplot(x=y, y=X[selected_cols[0]], ax=ax, palette="Set2")
+            st.pyplot(fig)
+        elif chart_type == "Pie Chart":
+            st.subheader("Target Variable Distribution (Pie)")
+            fig, ax = plt.subplots()
+            y.value_counts().plot.pie(autopct='%1.1f%%', startangle=90, ax=ax, cmap='Pastel1')
+            ax.set_ylabel('')
+            st.pyplot(fig)
+
 elif method == "Random Forest (Embedded)":
-    st.subheader("Random Forest")
-    with st.spinner('Training trees...'):
+    st.header("Random Forest (Embedded Method)")
+    st.info("This method calculates feature importance during the training of a tree-based model.")
+    
+    with st.spinner('Building trees...'):
         model_rf = RandomForestClassifier()
-        model_rf.fit(X_scaled_array, y)
+        model_rf.fit(X_scaled_df, y)
     
     importances = model_rf.feature_importances_
-    importance_df = pd.DataFrame({'importance': importances}, index=X.columns)
-    importance_df = importance_df.sort_values(by='importance', ascending=False)
-
-    #TOP5
-    top_5 = importance_df.head(5).index.tolist()
-    st.success(f"choosen features: {top_5}")
+    importance_df = pd.DataFrame({'Importance': importances}, index=X.columns)
+    importance_df = importance_df.sort_values(by='Importance', ascending=False)
     
-    #GRAPH
-    st.write("Feature Importance Chart:")
-    st.bar_chart(importance_df)
-
-
-
-
-
-
-#st.subheader("DataFrame Preview")
-#st.dataframe(df)
-
-#st.table(df)
-#st.table(df.head())
-
-#st.json({"name": "Alice", "age": 22})
-
-#if st.button("Click me"):
-#st.write("Button clicked!")
+    top_5 = importance_df.head(5).index.tolist()
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.success("Top 5 Important Features:")
+        st.write(top_5)
+        
+    with col2:
+        if chart_type == "Method Scores":
+            st.subheader("Feature Importance Scores")
+            st.bar_chart(importance_df)
+        elif chart_type == "Correlation Matrix":
+            st.subheader("Correlation Matrix")
+            fig, ax = plt.subplots(figsize=(10, 8))
+            sns.heatmap(X_scaled_df.corr(), annot=False, cmap='coolwarm', ax=ax)
+            st.pyplot(fig)
+        elif chart_type == "Target Variable Distribution":
+            st.subheader("Target Variable Distribution")
+            st.bar_chart(y.value_counts())
+        elif chart_type == "Boxplot":
+            st.subheader(f"Boxplot: {top_5[0]}")
+            fig, ax = plt.subplots(figsize=(8, 6))
+            sns.boxplot(x=y, y=X[top_5[0]], ax=ax, palette="Set2")
+            st.pyplot(fig)
+        elif chart_type == "Pie Chart":
+            st.subheader("Target Variable Distribution (Pie)")
+            fig, ax = plt.subplots()
+            y.value_counts().plot.pie(autopct='%1.1f%%', startangle=90, ax=ax, cmap='Pastel1')
+            ax.set_ylabel('')
+            st.pyplot(fig)
